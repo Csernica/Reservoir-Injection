@@ -40,6 +40,7 @@ fileExt = '.txt'
 #Note removeZeroScans removes zero scans when calculating the output, but all scans are retained in mergedList.
 removeZeroScans = False
 
+#Read in files
 rtnAllFilesDF, mergedList, allOutputDict = dataAnalyzerMN_FTStat.calc_Folder_Output(folderPath, cullOn=cullOn, cullAmount=cull_amount,
                                                onlySelectedTimes=onlySelectedTimes, selectedTimes = selectedTimes, 
                                                fragmentIsotopeList = fragmentIsotopeList, 
@@ -48,10 +49,12 @@ rtnAllFilesDF, mergedList, allOutputDict = dataAnalyzerMN_FTStat.calc_Folder_Out
                                                fragKeyList = list(fragmentDict.keys()), removeZeroScans = removeZeroScans,
                                                Microscans = 1)
 
+#Screen for common failures
 dataScreen_FTStat.RSESNScreen(allOutputDict)
 dataScreen_FTStat.zeroCountsScreen(folderPath, fragmentDict, mergedList, fileExt = fileExt)
 dataScreen_FTStat.internalStabilityScreenSubsequence(folderPath, fragmentDict, fragmentMostAbundant, mergedList, fileExt = fileExt)
 
+#Output as json
 sampleOutputDict = dataAnalyzerMN_FTStat.folderOutputToDict(rtnAllFilesDF)
 
 with open('Methionine Results.json', 'w', encoding='utf-8') as f:
