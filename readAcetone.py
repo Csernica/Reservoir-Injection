@@ -25,11 +25,11 @@ for i, v in fragmentDict.items():
     fragmentIsotopeList.append(v)
 
 ###Set parameters for extraction 
-#integrate only across the times included for each file. Here, 16-76 minutes of the .RAW file corresponds to our measurement (other timepoint correspond to purging, priming, etc.)
+#here, the entire duration corresponds to our measurement
 onlySelectedTimes = False
 selectedTimes = [(0,0)]
 #Any specific properties you want to cull on
-cullOn = "TIC*IT"
+cullOn = None
 #Multiple of SD you want to cull beyond for the cullOn property
 cull_amount = 3
 #Whether you want to calculate MN Relative Abundances (not used here); see the Mathematics paper. 
@@ -39,6 +39,7 @@ fileExt = '.txt'
 #Note removeZeroScans removes zero scans when calculating the output, but all scans are retained in mergedList.
 removeZeroScans = False
 
+#read in the files
 rtnAllFilesDF, mergedList, allOutputDict = dataAnalyzerMN_FTStat.calc_Folder_Output(folderPath, cullOn=cullOn, cullAmount=cull_amount,
                                                onlySelectedTimes=onlySelectedTimes, selectedTimes = selectedTimes, 
                                                fragmentIsotopeList = fragmentIsotopeList, 
@@ -47,10 +48,12 @@ rtnAllFilesDF, mergedList, allOutputDict = dataAnalyzerMN_FTStat.calc_Folder_Out
                                                fragKeyList = list(fragmentDict.keys()), removeZeroScans = removeZeroScans,
                                                Microscans = 10)
 
+#screen for common anomalies 
 dataScreen_FTStat.RSESNScreen(allOutputDict)
 dataScreen_FTStat.zeroCountsScreen(folderPath, fragmentDict, mergedList, fileExt = fileExt)
 dataScreen_FTStat.internalStabilityScreenSubsequence(folderPath, fragmentDict, fragmentMostAbundant, mergedList, fileExt = fileExt)
 
+#output as .json
 sampleOutputDict = dataAnalyzerMN_FTStat.folderOutputToDict(rtnAllFilesDF)
 
 with open('Acetone Results.json', 'w', encoding='utf-8') as f:
