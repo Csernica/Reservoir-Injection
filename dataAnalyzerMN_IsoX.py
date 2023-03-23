@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # 
 #Author: Tim Csernica
-#Last Updated: August 31, 2022
+#Last Updated: March 23, 2023
 
 import copy
 import itertools
@@ -47,6 +47,16 @@ def calculate_Counts_And_ShotNoise(peakDf,resolution=120000,CN=4.4,z=1):
     return peakDf
 
 def findMostAbundantSub(mergedDf, subNameList):
+    '''
+    Looks for the most abundant substituion in a dataframe and returns it. 
+
+    Inputs:
+        mergedDf: The dataframe of interest
+        subNameList: A list of substitution names to search through
+
+    Outputs:
+        max_sub: A string, identifying the most abundant substitution.
+    '''
     counts = []
     for sub in subNameList:
         thisCounts = mergedDf['counts'+sub].sum()
@@ -80,30 +90,36 @@ def calc_Append_Ratios(mergedDf, subNameList, mostAbundant = True):
                             
     return mergedDf
     
-def calc_MN_Rel_Abundance(mergedDf, subNameList):
-    mergedDf['total Counts'] = 0
-    for sub in subNameList:
-        mergedDf['total Counts'] += mergedDf['counts' + sub]
-        
-    for sub in subNameList:
-        mergedDf['MN Relative Abundance ' + sub] = mergedDf['counts' + sub] / mergedDf['total Counts']
-        
-    return mergedDf
-    
 def cull_By_Time(mergedDf, timeBounds, scanNumber = False):
+    '''
+    Takes a dataframe with orbitrap data and culls results outside the bounds of either scanNumber or retention time. 
+
+    Inputs:
+        mergedDf: A dataframe containing Orbitrap data
+        timeBounds: A tuple containing the numerical values of the bounds
+        scanNumber: If True, cull on scanNumber. Else, cull on retention time. 
+
+    Outputs:
+        mergedDf: The same dataframe with scans outside the bounds removed. 
+    '''
     if scanNumber:
         mergedDf = mergedDf[mergedDf['scanNumber'].between(timeBounds[0], timeBounds[1], inclusive=True)]
     else:
         mergedDf = mergedDf[mergedDf['retTime'].between(timeBounds[0], timeBounds[1], inclusive=True)]
     return mergedDf
     
-def combine_Substituted_Peaks(splitDf, cullByTime = False, scanNumber = False, timeBounds = (0,0),MNRelativeAbundance = False):
+def combine_Substituted_Peaks(splitDf, cullByTime = False, scanNumber = False, timeBounds = (0,0)):
     '''
-    splitDf: A Pandas groupBy object; can be iterated through; iterations give tuples of isotopolog strings ('D','M0', etc.) and dataframes corresponding to the data for that substitution. 
-    cullByTime: If True, only include data within certain set of timepoints (by scan # or retTime)
-    scanNumber: If True & cullByTime is True, then cull based on scan #. OTherwise, cull by retTime.
-    timeBounds: A tuple; the retTime or scanNumber limits to use. 
-    MNRelativeAbundance: Calculate MN Relative Abundances rather than ratios. 
+    A helper function for 'processIsoXDf'. Takes a Pandas groupby object containing dataframes for individual substitutions and combines them into a single dataframe for that acquisition.
+
+    Inputs:
+        splitDf: A Pandas groupBy object; can be iterated through; iterations give tuples of isotopolog strings ('D','M0', etc.) and dataframes corresponding to the data for that substitution. 
+        cullByTime: If True, only include data within certain set of timepoints (by scan # or retTime)
+        scanNumber: If True & cullByTime is True, then cull based on scan #. OTherwise, cull by retTime.
+        timeBounds: A tuple; the retTime or scanNumber limits to use. 
+    
+    Outputs:
+        combinedData: A dictionary with keys of subNameList (a list of substitutions in the dataframe) and mergedDf (a dataframe containing the combined information for all isotopes).
     '''
     combinedData = {}
     subIdx = 0 
@@ -137,10 +153,7 @@ def combine_Substituted_Peaks(splitDf, cullByTime = False, scanNumber = False, t
         baseDf.loc[baseDf['peakNoise' + subName].isnull(), 'peakNoise' + subName] = 0
         baseDf.loc[baseDf['counts' + subName].isnull(), 'counts' + subName] = 0 
 
-    if MNRelativeAbundance: 
-        baseDf = calc_MN_Rel_Abundance(baseDf, subNameList)
-    else:
-        baseDf = calc_Append_Ratios(baseDf, subNameList)
+    baseDf = calc_Append_Ratios(baseDf, subNameList)
 
     if cullByTime: 
         baseDf = cull_By_Time(baseDf, timeBounds, scanNumber = scanNumber)
@@ -149,26 +162,18 @@ def combine_Substituted_Peaks(splitDf, cullByTime = False, scanNumber = False, t
     combinedData['mergedDf'] = baseDf
     return combinedData
 
-def setDualInletTimes(startDeadObsReps):
-    startTime, deadTime, obsTime, numReps = startDeadObsReps
-    dualInletBounds = []
-    curTime = startTime
-    for rep in range(numReps): 
-        thisObs = (curTime + deadTime, curTime + deadTime + obsTime)
-        dualInletBounds.append(thisObs)
-        curTime += deadTime + obsTime
-
-    return dualInletBounds
-
-def processIsoXDf(IsoXDf, cullByTime = False, scanNumber = False, timeBounds = (0,0),MNRelativeAbundance = False, splitDualInlet = False, startDeadObsReps = (0,10,2,7)):
+def processIsoXDf(IsoXDf, cullByTime = False, scanNumber = False, timeBounds = (0,0)):
     '''
     Takes in the IsoXDataframe; splits it based on filename. For each filename, combines the data from all substitutions into a single dataframe. Adds these dataframes to an output list. 
 
     Inputs:
         IsoXDf: A dataframe with the data from the .csv output.
+        cullByTime: If True, culls results outside a certain set of time bounds (scanNumber or retTime)
+        scanNumber: If True, the cullByTimes correspond to scan numbers. Else, they correspond to retention times. 
+        timeBounds: A tuple giving the time bounds to cull on.
 
     Outputs:
-        mergedList: mergedList, is a list of dataframes. Each dataframe corresponds to one file & has all information about each scan on a single line. 
+        mergedDict: A dictionary where keys are file names and values are dictionaries; the keys of these are 'subNameList' (a list of substitutions for that dataframe) and 'mergedDf' (the actual dataframe). 
     '''
     filenames = list(set(IsoXDf.filename))
     filenames.sort()
@@ -191,72 +196,24 @@ def processIsoXDf(IsoXDf, cullByTime = False, scanNumber = False, timeBounds = (
         #sort by isotopolog to prepare for combine_substituted
         topScanDf = selectTopScan.groupby('isotopolog')
 
-        if splitDualInlet:
-            #find the bounds for processing
-            dualInletBounds = setDualInletTimes(startDeadObsReps)
-            print(dualInletBounds)
-            
-            for thisTimeIdx, thisTimeBounds in enumerate(dualInletBounds):
-                thisCombined = combine_Substituted_Peaks(topScanDf, cullByTime = True, scanNumber = scanNumber, timeBounds = thisTimeBounds,MNRelativeAbundance = MNRelativeAbundance)
-
-                mergedDict[thisFileName + str(thisTimeIdx)] = thisCombined
-
-        else:
-            thisCombined = combine_Substituted_Peaks(topScanDf, cullByTime = cullByTime, scanNumber = scanNumber, timeBounds = timeBounds,MNRelativeAbundance = MNRelativeAbundance)
-            mergedDict[thisFileName] = thisCombined
+        thisCombined = combine_Substituted_Peaks(topScanDf, cullByTime = cullByTime, scanNumber = scanNumber, timeBounds = timeBounds)
+        mergedDict[thisFileName] = thisCombined
 
     return mergedDict
 
-def output_Raw_File_MN_Rel_Abundance(mergedDf, subNameList, massStr = None):
-    #Initialize output dictionary 
-    rtnDict = {}
-      
-    if massStr == None:
-        #Try to set massStr programatically; first look for unsub
-        try:
-            massStr = str(round(mergedDf['massUnsub'].median(),1))
-        #If this fails, find the first substitution and use that instead. 
-        except:
-            mergedEntries = list(mergedDf.keys())
-            subNameList = [x[6:] for x in mergedEntries if 'counts' in x]
-            massStr = str(round(mergedDf['mass' + subNameList[0]].median(),1))
-        
-    rtnDict[massStr] = {}
-    
-    for sub in subNameList:
-        rtnDict[massStr][sub] = {}
-        rtnDict[massStr][sub]['MN Relative Abundance'] = np.mean(mergedDf['MN Relative Abundance ' + sub])
-        rtnDict[massStr][sub]['StDev'] = np.std(mergedDf['MN Relative Abundance ' + sub])
-        rtnDict[massStr][sub]['StError'] = rtnDict[massStr][sub]['StDev'] / np.power(len(mergedDf),0.5)
-        rtnDict[massStr][sub]['RelStError'] = rtnDict[massStr][sub]['StError'] / rtnDict[massStr][sub]['MN Relative Abundance']
-        rtnDict[massStr][sub]['TICVar'] = 0
-        rtnDict[massStr][sub]['TIC*ITVar'] = 0
-        rtnDict[massStr][sub]['TIC*ITMean'] = 0
-                        
-        a = mergedDf['counts' + sub].sum()
-        b = mergedDf['total Counts'].sum()
-        shotNoiseByQuad = np.power((1./a + 1./b), 0.5)
-        rtnDict[massStr][sub]['ShotNoiseLimit by Quadrature'] = shotNoiseByQuad
-        
-    return rtnDict        
-
-def output_Raw_File_Ratios(mergedDf, subNameList, mostAbundant = True, massStr = None, omitRatios = [], debug = True, MNRelativeAbundance = False):
+def output_Raw_File_Ratios(mergedDf, subNameList, mostAbundant = True, massStr = None):
     '''
     For each ratio of interest, calculates mean, stdev, SErr, RSE, and ShotNoise based on counts. 
     Outputs these in a dictionary which organizes by fragment (i.e different entries for fragments at 119 and 109).
     
     Inputs:
-        df: A list of merged data frames from the _combineSubstituted function. Each dataframe constitutes one fragment.
-        isotopeList: A list of isotopes corresponding to the peaks extracted by FTStat, in the order they were extracted. 
-                    This must be the same for each fragment. This is used to determine all ratios of interest, i.e. 13C/UnSub, and label them in the proper order. 
-        omitRatios: A list of ratios to ignore. I.e. by default, the script will report 13C/15N ratios, which one may not care about. 
-        weightByNLHeight: Used to say whether to weight by NL height or not. Tim: 20210330: Added this as the weightByNLHeight does not yet work with M+N routines. 
-        debug: Set false to suppress print output
-        percentAbundance: Optionally calculate the percent abundance within each fragment, for M+N experiments. 
-        
+        mergedDf: A dataframe containing information about a target set of isotopes.
+        subNameList: A list of isotopes in the dataframe.
+        mostAbundant: If true, only calculate ratios including the most abundant substitution
+        massStr: Optional; set a value for the mass of the fragment in question. If left as none, the program will calculate it and fill it in. 
          
     Outputs: 
-        A dictionary giving mean, stdev, StandardError, relative standard error, and shot noise limit for all peaks.  
+        A dictionary giving mean, stdev, StandardError, relative standard error, and shot noise limit for all isotope ratios.  
     '''
     #Initialize output dictionary 
     rtnDict = {}
@@ -276,6 +233,7 @@ def output_Raw_File_Ratios(mergedDf, subNameList, mostAbundant = True, massStr =
         
     maxSub = findMostAbundantSub(mergedDf, subNameList)
 
+    #iterate through possible isotope ratios
     for sub1, sub2 in itertools.combinations(subNameList,2):
         if ((mostAbundant) and (sub1 != maxSub) and (sub2 != maxSub)): 
             continue
@@ -309,40 +267,44 @@ def output_Raw_File_Ratios(mergedDf, subNameList, mostAbundant = True, massStr =
                         
     return rtnDict
 
-def calc_Folder_Output(isoXFileName, debug = False, cullByTime = False, scanNumber = False, timeBounds = (0,0), MNRelativeAbundance = False, splitDualInlet = False, startDeadObsReps = (0,2,5,7)):
+def calc_Folder_Output(isoXFileName, debug = False, cullByTime = False, scanNumber = False, timeBounds = (0,0)):
     '''
-   
-    '''
-    if cullByTime and splitDualInlet:
-        raise Exception("Do not use both cull times and the dual inlet time control in the same method")
+    Calculates the output for an input .isox file. The title 'calc_Folder_Output' corresponds to a folder of .RAW files, but a single .isox file. Returns a tuple with three data products of varying degrees of complexity. 
 
+    Inputs:
+        isoXFileName: A string, the name of the target .isox file
+        debug: If true, prints file names
+        cullByTime: If True, culls results outside a certain set of time bounds (scanNumber or retTime)
+        scanNumber: If True, the cullByTimes correspond to scan numbers. Else, they correspond to retention times. 
+        timeBounds: A tuple giving the time bounds to cull on.
+
+    Outputs:
+        rtnAllFilesDf: A dataframe containing a table with the output data
+        mergedDict: A dictionary; keys are file names and values are dictionaries; then keys are 'subNameList' and 'mergedDf'; the mergedDfs contain the scan-by-scan data. 
+        allOutputDict: A dictionary used to construct rtnAllFilesDf.
+    '''
     IsoX = readIsoX(isoXFileName)
-    mergedDict = processIsoXDf(IsoX, cullByTime = cullByTime, scanNumber = scanNumber, timeBounds = timeBounds, MNRelativeAbundance = MNRelativeAbundance, splitDualInlet = splitDualInlet, startDeadObsReps = startDeadObsReps)
+    mergedDict = processIsoXDf(IsoX, cullByTime = cullByTime, scanNumber = scanNumber, timeBounds = timeBounds)
 
     rtnAllFilesDF = []
     allOutputDict = {}
+    #Go through by file and calculate output
     for thisFileName, thisFileData in mergedDict.items():
-        thisMergedDf = thisFileData['mergedDf']
-        thisSubNameList = thisFileData['subNameList']
         if debug:
             print(thisFileName)
-        if MNRelativeAbundance:
-            header = ["FileName", "Fragment", "MN Relative Abundance", "Average", "StdDev", "StdError", "RelStdError",'ShotNoise']
-            thisFileOutput = output_Raw_File_MN_Rel_Abundance(thisMergedDf, thisSubNameList)
-        else:
-            header = ["FileName", "Fragment", "IsotopeRatio", "Average", "StdDev", "StdError", "RelStdError",'ShotNoise']
-            thisFileOutput = output_Raw_File_Ratios(thisMergedDf, thisSubNameList)
 
+        thisMergedDf = thisFileData['mergedDf']
+        thisSubNameList = thisFileData['subNameList']
+        header = ["FileName", "Fragment", "IsotopeRatio", "Average", "StdDev", "StdError", "RelStdError",'ShotNoise']
+        thisFileOutput = output_Raw_File_Ratios(thisMergedDf, thisSubNameList)
+
+        #Fill in output dictionary
         allOutputDict[thisFileName] = thisFileOutput
 
         for fragKey, fragData in thisFileOutput.items():
             for subKey, subData in fragData.items():
             #add subkey to each separate df for isotope specific 
-                if MNRelativeAbundance:
-                    thisRVal = subData["MN Relative Abundance"]
-                else: 
-                    thisRVal = subData["Ratio"]
-
+                thisRVal = subData["Ratio"]
                 thisStdDev = subData["StDev"]
                 thisStError = subData["StError"] 
                 thisRelStError = subData["RelStError"]
@@ -350,6 +312,7 @@ def calc_Folder_Output(isoXFileName, debug = False, cullByTime = False, scanNumb
                 thisRow = [thisFileName, fragKey, subKey, thisRVal, thisStdDev, thisStError,thisRelStError, thisShotNoise] 
                 rtnAllFilesDF.append(thisRow)
 
+    #Turn output dictionary into dataframe
     rtnAllFilesDF = pd.DataFrame(rtnAllFilesDF)
 
     # set the header row as the df header
@@ -362,11 +325,16 @@ def calc_Folder_Output(isoXFileName, debug = False, cullByTime = False, scanNumb
 
 def folderOutputToDict(rtnAllFilesDF):
     '''
-    takes the output dataframe and processes to a dictionary, for .json output
+    Takes the output dataframe and processes to a dictionary, for .json output. Similar to allOutputDict; may be removed in a later version. 
+
+    Inputs:
+        rtnAllFilesDf: A dataframe containing a table with the output data
+
+    Outputs:
+        sampleOutputDict: A dictionary with processed output, suitable for export as a .json
     '''
 
     sampleOutputDict = {}
-    fragmentList = []
     for i, info in rtnAllFilesDF.iterrows():
         fragment = info['Fragment']
         file = info['FileName']

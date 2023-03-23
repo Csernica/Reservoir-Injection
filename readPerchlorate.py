@@ -12,11 +12,9 @@ for thisFileName in triplicateFileNames:
     #calculate output
     rtnAllFilesDF, mergedDict, allOutputDict = dA.calc_Folder_Output(thisTriplicateObservation,debug = True, cullByTime = True, scanNumber = False, timeBounds = (15,90))
 
-    SmpStd = ['Std','Smp','Std','Smp','Std','Smp','Std']
-    Replicate = ['1','1','2','2','3','3','4']
     #rest use mergedList
     #Screen data for common problems
-    dataScreen_IsoX.RSESNScreen(allOutputDict,SmpStd = SmpStd, Replicate = Replicate)
+    dataScreen_IsoX.RSESNScreen(allOutputDict)
     dataScreen_IsoX.zeroCountsScreen(mergedDict)
     dataScreen_IsoX.internalStabilityScreenSubsequence(mergedDict,priorSubsequenceLength = 1000, testSubsequenceLength = 1000, thresholdConstant = 0.2)
 

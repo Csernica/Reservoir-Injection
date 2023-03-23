@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 Last Modified: July 29, 2022
-Author: Tim Csernica
 Contains the functions used to read in and analyze FTStatistic output data. 
 """
 
